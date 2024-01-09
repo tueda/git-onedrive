@@ -1,0 +1,138 @@
+#!/bin/bash
+#
+# Create remote Git repositories on OneDrive from WSL.
+#
+set -eu
+set -o pipefail
+
+# Trap ERR to print the stack trace when a command fails.
+# See: https://gist.github.com/ahendrix/7030300
+_errexit() {
+  local err=$?
+  set +o xtrace
+  local code="${1:-1}"
+  echo "Error in ${BASH_SOURCE[1]}:${BASH_LINENO[0]}: '${BASH_COMMAND}' exited with status $err" >&2
+  # Print out the stack trace described by $FUNCNAME
+  if [ ${#FUNCNAME[@]} -gt 2 ]; then
+    echo 'Traceback:' >&2
+    for ((i = 1; i < ${#FUNCNAME[@]} - 1; i++)); do
+      echo "  [$i]: at ${BASH_SOURCE[i + 1]}:${BASH_LINENO[$i]} in function ${FUNCNAME[$i]}" >&2
+    done
+  fi
+  echo "Exiting with status ${code}" >&2
+  exit "${code}"
+}
+trap _errexit ERR
+set -o errtrace
+
+# Run a command without the error trap.
+run() {
+  trap - ERR
+  set +o errtrace
+  "$@"
+  trap _errexit ERR
+  set -o errtrace
+}
+
+# Abort the script.
+abort() {
+  echo "error: $*" 1>&2
+  exit 1
+}
+
+# Check if we are on WSL.
+if grep -q -i Microsoft /proc/version; then :; else
+  abort git onedrive works only on WSL.
+fi
+
+# If undefined, set GIT_ONEDRIVE_ROOT = /mnt/c/Users/USERNAME/OneDrive/Repos
+if [ -z "${GIT_ONEDRIVE_ROOT:-}" ]; then
+  GIT_ONEDRIVE_ROOT=$(wslpath "$(cmd.exe /C "echo %USERPROFILE%" 2>/dev/null | tr -d '\r')")/OneDrive/Repos
+fi
+
+# Show the help message.
+git_onedrive_help() {
+  echo "usage: git onedrive create [<name>] <repo>"
+  echo "   or: git onedrive clone <repo> [<dir>]"
+  echo "   or: git onedrive list"
+}
+
+# Create a remote repository on OneDrive.
+git_onedrive_create() {
+  if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "usage: git onedrive create [<name>] <repo>"
+    exit 1
+  fi
+  if [ $# -eq 1 ]; then
+    name=origin
+    repo=$1
+  fi
+  if [ $# -eq 2 ]; then
+    name=$1
+    repo=$2
+  fi
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    if git remote get-url "$name" >/dev/null 2>&1; then
+      abort remote \'"$name"\' already exists.
+    fi
+  fi
+  if [ -d "$GIT_ONEDRIVE_ROOT/$repo" ]; then
+    abort repository \'"$GIT_ONEDRIVE_ROOT/$repo"\' already exists.
+  fi
+  if [ ! -d "$GIT_ONEDRIVE_ROOT" ]; then
+    mkdir "$GIT_ONEDRIVE_ROOT"
+  fi
+  mkdir "$GIT_ONEDRIVE_ROOT/$repo"
+  (
+    cd "$GIT_ONEDRIVE_ROOT/$repo"
+    run git init --bare
+  )
+  if git rev-parse --git-dir >/dev/null 2>&1; then :; else
+    run git init
+  fi
+  run git remote add "$name" "$GIT_ONEDRIVE_ROOT/$repo"
+}
+
+# Clone a repository on OneDrive.
+git_onedrive_clone() {
+  if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "usage: git onedrive clone <repo> [<dir>]"
+    exit 1
+  fi
+  repo=$1
+  shift
+  run git clone "$GIT_ONEDRIVE_ROOT/$repo" "$@"
+}
+
+# List repositories on OneDrive.
+git_onedrive_list() {
+  if [ $# -ne 0 ]; then
+    echo "usage: git onedrive list"
+    exit 1
+  fi
+  if [ -d "$GIT_ONEDRIVE_ROOT" ]; then
+    run ls "$GIT_ONEDRIVE_ROOT"
+  fi
+}
+
+# Without command-line options, show the help message and then exit.
+if [ $# -eq 0 ]; then
+  git_onedrive_help
+  exit
+fi
+
+# Run the subcommand.
+subcommand=$1
+case $subcommand in
+-h | --help)
+  git_onedrive_help
+  ;;
+*)
+  shift
+  if [[ $(type -t "git_onedrive_$subcommand") == function ]]; then
+    "git_onedrive_$subcommand" "$@"
+  else
+    abort Unknown subcommand: git onedrive "$subcommand".
+  fi
+  ;;
+esac
