@@ -65,9 +65,10 @@ commands:
        Clone a repository <repo> on OneDrive into a newly created directory
        <dir>.
    list
-       List repositroies on OneDrive.
+       List repositories on OneDrive.
 environment variable:
    GIT_ONEDRIVE_ROOT = $GIT_ONEDRIVE_ROOT
+       The path to the root directory to store the repositories on OneDrive.
 END
   # editorconfig-checker-enable
 }
