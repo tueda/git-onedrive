@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Create remote Git repositories on OneDrive from WSL.
+# Manage Git repositories on OneDrive from WSL.
 #
 set -eu
 set -o pipefail
@@ -52,15 +52,30 @@ fi
 
 # Show the help message.
 git_onedrive_help() {
-  echo "usage: git onedrive create [<name>] <repo>"
-  echo "   or: git onedrive clone <repo> [<dir>]"
-  echo "   or: git onedrive list"
+  # editorconfig-checker-disable
+  cat <<END
+usage: git onedrive add [<name>=origin] <repo>
+   or: git onedrive clone <repo> [<dir>=<repo>]
+   or: git onedrive list
+commands:
+   add [<name>=origin] <repo>
+       Create <repo> on OneDrive if it does not exist, and add it as a remote
+       named <name>.
+   clone <repo> [<dir>=<repo>]
+       Clone a repository <repo> on OneDrive into a newly created directory
+       <dir>.
+   list
+       List repositroies on OneDrive.
+environment variable:
+   GIT_ONEDRIVE_ROOT = $GIT_ONEDRIVE_ROOT
+END
+  # editorconfig-checker-enable
 }
 
-# Create a remote repository on OneDrive.
-git_onedrive_create() {
+# Add a remote for a repository on OneDrive.
+git_onedrive_add() {
   if [ $# -lt 1 ] || [ $# -gt 2 ]; then
-    echo "usage: git onedrive create [<name>] <repo>"
+    echo "usage: git onedrive add [<name>] <repo>"
     exit 1
   fi
   if [ $# -eq 1 ]; then
@@ -76,17 +91,16 @@ git_onedrive_create() {
       abort remote \'"$name"\' already exists.
     fi
   fi
-  if [ -d "$GIT_ONEDRIVE_ROOT/$repo" ]; then
-    abort repository \'"$GIT_ONEDRIVE_ROOT/$repo"\' already exists.
-  fi
   if [ ! -d "$GIT_ONEDRIVE_ROOT" ]; then
     mkdir "$GIT_ONEDRIVE_ROOT"
   fi
-  mkdir "$GIT_ONEDRIVE_ROOT/$repo"
-  (
-    cd "$GIT_ONEDRIVE_ROOT/$repo"
-    run git init --bare
-  )
+  if [ ! -d "$GIT_ONEDRIVE_ROOT/$repo" ]; then
+    mkdir "$GIT_ONEDRIVE_ROOT/$repo"
+    (
+      cd "$GIT_ONEDRIVE_ROOT/$repo"
+      run git init --bare
+    )
+  fi
   if git rev-parse --git-dir >/dev/null 2>&1; then :; else
     run git init
   fi
